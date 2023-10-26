@@ -65,24 +65,65 @@ if rank == 0:
 #NOTE change this for your own path
 DATA_PATH = '../../../data/LGBM/Data/Batches/Batches_proto_4_csv/'
 
-def run_iteration(i, X_train, X_val, X_test, y_train, y_val, y_test):
-    Estimators = 750
+def run_iteration(i, X_train, X_val, X_test, y_train, y_val, y_test,
+                    Estimators = 750, Objective = 'l2_root'):
+    """ 
+    Function that runs a single iteration of the Lightgbm algorithm for a given
+    point in a grid. It is hard coded what hyperparameters are used for
+    what dimension of the grid. The function returns the point in the grid and
+    the mean squared error of the model.
+
+    Parameters
+    ----------
+    i : array
+        The point in the grid to be tested. Must be of len 2, 3 or 4.
+
+    X_train : array
+        The training data.
+
+    X_val : array
+        The validation data.
+
+    X_test : array
+        The test data.
+
+    y_train : array
+        The training labels.
+
+    y_val : array
+        The validation labels.
+
+    y_test : array
+        The test labels.
+
+    Estimators : int, optional
+        The number of estimators to be used in the Lightgbm algorithm. The default is 750.
+
+    Objective : str, optional
+        The objective function to be used in the Lightgbm algorithm. The default is 'l2_root'.
+        also known as root mean squared error.
+
+    Returns
+    -------
+    batch_out : array
+        The point in the grid and the mean squared error of the model.
+    """
+
     grid_size_check = len(i)
-    Objective = 'l2_root'
     if grid_size_check == 2:
         LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, objective=Objective)
         LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
         y_pred = LGBM.predict(X_test)
         mse = np.sqrt(mean_squared_error(y_test, y_pred))
-        batch_nr = [*i, mse]
-        return batch_nr
+        batch_out = [*i, mse]
+        return batch_out
     elif grid_size_check == 3:
         LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, num_leaves=int(i[2]), objective=Objective)
         LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
         y_pred = LGBM.predict(X_test)
         mse = np.sqrt(mean_squared_error(y_test, y_pred))
-        batch_nr = [*i, mse]
-        return batch_nr
+        batch_out = [*i, mse]
+        return batch_out
     elif grid_size_check == 4:
         LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, num_leaves=int(i[2]), bagging_fraction=i[3], objective=Objective)
         LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
@@ -90,8 +131,8 @@ def run_iteration(i, X_train, X_val, X_test, y_train, y_val, y_test):
         mse = np.sqrt(mean_squared_error(y_test, y_pred))
         i[1] = int(i[1])
         i[2] = int(i[2])
-        batch_nr = [*i, mse]
-        return batch_nr
+        batch_out = [*i, mse]
+        return batch_out
 
 
 
@@ -150,7 +191,30 @@ def median_min_loss(grid):
 
 
 
-def totalt_analysis(resolution, edges, t, k):
+def total_analysis(resolution, edges, t, k):
+    """
+    Function that runs analysis on all grid types and saves the results to a file.
+    
+    Parameters
+    ----------
+    resolution : array
+        The resolution of the grid. Here given by the pipeline.
+
+    edges : array
+        The domain of the grid. Here given by the pipeline.
+
+
+
+    Returns
+    -------
+    True : bool
+        If the function runs successfully. Only returned by the master node.
+
+    None : None
+        If the function runs successfully. Only returned by the worker nodes.
+    """
+
+
     d = len(resolution)
 
     # RSA
@@ -206,8 +270,8 @@ def totalt_analysis(resolution, edges, t, k):
 
 
 if rank == 0:
-    tot_out =totalt_analysis(resolution, edges, 6, 1)
+    tot_out =total_analysis(resolution, edges, 6, 1)
     if tot_out == True:
         print('Successfull run')
 else:
-    totalt_analysis(resolution, edges, 6, 1)
+    total_analysis(resolution, edges, 6, 1)
