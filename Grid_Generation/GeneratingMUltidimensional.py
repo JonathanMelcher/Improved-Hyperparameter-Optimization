@@ -196,3 +196,35 @@ def write_file(lista, filename):
         s += str(t)
         s += " "
       f.write(s + '\n')
+
+
+
+
+
+
+  
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 

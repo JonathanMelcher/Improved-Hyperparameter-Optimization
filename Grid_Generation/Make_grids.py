@@ -1,5 +1,13 @@
 
+
+import matplotlib.pyplot as plt
+import random
+import math
+from itertools import combinations, product
+
+
 # import libraries
+
 import numpy as np
 from numpy.linalg import norm
 import random
@@ -20,7 +28,7 @@ def cheak_overlap(coor, spheres, R):
         dist = np.sum(np.power(norm(coor-i),2))
         if dist < R**2:
             return False
-    return True    
+    return True
 
 def rand_sphere(d,L,R,N):
     spheres = []
@@ -68,7 +76,7 @@ from itertools import combinations, product
 
 
 def make_RSA(number, Length, d):
-        #number - expected number of points 
+        #number - expected number of points
     #Length - length of the square
 
     ##saturation density
@@ -111,7 +119,7 @@ def make_RSA(number, Length, d):
 
     if D>Length:
       D=D0
-    
+
     bigvoxel_amount = int(Length//D)
     bigvoxel = Length/(Length//D) #big voxel size
     #print("bigvoxel size", bigvoxel)
@@ -123,7 +131,7 @@ def make_RSA(number, Length, d):
     cos = [bigvoxel_amount for i in range(d)]
     n = np.empty(cos, dtype = object)
     n.fill([])
-  
+
     ##checking whether a sphere with center c is good
 
     def check_sphere(c):
@@ -186,7 +194,7 @@ def make_RSA(number, Length, d):
 
     #print("I have created the voxel list!")
 
-    ##phase 3 - iterating until the voxel list is empty 
+    ##phase 3 - iterating until the voxel list is empty
 
     while len(vlist) >= 1:
       count=0
@@ -205,7 +213,7 @@ def make_RSA(number, Length, d):
           if check_voxel(voxel, vec, vec_dist):
             vlist1.append(voxel)
         vlist = list(vlist1)
-              
+
         break
 
       if 5<=d and d<=8 and 2**d * len(vlist) > 10000:
@@ -215,10 +223,10 @@ def make_RSA(number, Length, d):
           if check_voxel(voxel, vec, vec_dist):
             vlist1.append(voxel)
         vlist = list(vlist1)
-              
+
         #print("Skipping")
         break
-      
+
       v, vec, vec_dist = v/2, vec/2, vec_dist/2
 
       vlist1 = []
@@ -235,7 +243,7 @@ def make_RSA(number, Length, d):
 
     if len(vlist)>=1:
       count_max = max(int(500000/len(vlist)), 30)
-    
+
     #print("Raz", type(vlist))
     random.shuffle(vlist)
     #print("Dwa", type(vlist))
@@ -250,7 +258,7 @@ def make_RSA(number, Length, d):
           else:
             count+=1
         vlist.pop()
-    
+
     return list_RSA
 
 def hyper_tilling_grid(resolution, edges, t = 6, k = 1):
@@ -267,7 +275,7 @@ def hyper_tilling_grid(resolution, edges, t = 6, k = 1):
         The number of star vectors
     k: integer
         The length of the square
-    
+
     Returns
     -------
     hyper_tilling_transformed: array
@@ -282,17 +290,15 @@ def hyper_tilling_grid(resolution, edges, t = 6, k = 1):
     d = len(resolution)
     if d != len(edges[0]):
         raise ValueError("The dimension of the grid and the dimension of the domain do not match")
-    
+
     new_min, new_max = edges
 
     vectors = gm.make_vectors(d, t)
-    gen_tille = gm.make_quasi_nD(np.prod(resolution), k, d,t, vectors, z = 'YES')
+    gen_tille = gm.make_quasi_nD(np.prod(resolution), k, d, t, vectors, z = "NO")
     hyper_tilling = np.array(gen_tille)
 
-    ### NOTE: Is this the correct way to do this?
-    #         Why is the domain not form -0.5 to 0.5
-    old_min = np.ones(d) * np.min(hyper_tilling)
-    old_max = np.ones(d) * np.max(hyper_tilling)
+    old_min = np.ones(d) * (-0.5)
+    old_max = np.ones(d) * 0.5
 
     hyper_tilling_transformed = transform_grid(hyper_tilling, old_min, old_max, new_min, new_max)
     return hyper_tilling_transformed
@@ -323,7 +329,7 @@ def lhs_grid(resolution, edges):
     d = len(resolution)
     if d != len(edges[0]):
         raise ValueError("The dimension of the grid and the dimension of the domain do not match")
-    
+
     import pyDOE2
     new_min, new_max = edges
 
@@ -348,7 +354,7 @@ def rsa_grid(resolution, edges):
         The resolution of the grid in each dimension
     Edges: list of two arrays
         The first array is the lower bound and the second array is the upper bound
-    
+
     Returns
     -------
     reg_grid: array
@@ -362,16 +368,16 @@ def rsa_grid(resolution, edges):
     d = len(resolution)
     if d != len(edges[0]):
         raise ValueError("The dimension of the grid and the dimension of the domain do not match")
-    
-    
-    new_min, new_max = edges 
+
+
+    new_min, new_max = edges
 
     spheres = np.array(make_RSA(np.prod(resolution), 1, d))
     old_min = np.zeros(d)
     old_max = np.ones(d)
 
     spheres_transformed = transform_grid(spheres, old_min, old_max, new_min, new_max)
-    
+
     return spheres_transformed
 
 
@@ -396,10 +402,10 @@ def random_grid(resolution, edges):
     d = len(resolution)
     if d != len(edges[0]):
         raise ValueError("The dimension of the grid and the dimension of the domain do not match")
-    
+
     new_min, new_max = edges
 
-    
+
     temp_grid = []
     for i in range(d):
         temp_grid.append(np.random.uniform(new_min[i], new_max[i], np.prod(resolution)))
@@ -420,7 +426,7 @@ def reg_grid(resolution, edges):
         The resolution of the grid in each dimension
     Edges: list of two arrays
         The first array is the lower bound and the second array is the upper bound
-    
+
     Returns
     -------
     reg_grid: array
@@ -434,17 +440,178 @@ def reg_grid(resolution, edges):
     d = len(resolution)
     if d != len(edges[0]):
         raise ValueError("The dimension of the grid and the dimension of the domain do not match")
-    
+
     new_min, new_max = edges
 
     temp_grid = []
     for i in range(d):
         temp_grid.append(np.linspace(new_min[i], new_max[i], resolution[i]))
-    
+
     reg_grid = np.meshgrid(*temp_grid)
     reg_grid = np.array(reg_grid).reshape(d,np.prod(resolution)).T
 
     return reg_grid
+
+
+
+################transforming a tiling
+
+def transform_tiling(tiling, old_min, old_max, new_min, new_max, d):
+    #d is the number of dimensions
+    #old_min is the vector with the old minimum, old_max - maximum
+    #new_min sis the new minimum, new_max - maximum
+    for i in range(d):
+        a = (new_max[i]-new_min[i])/(old_max[i]-old_min[i])
+        b = (new_min[i]*old_max[i]-old_min[i]*new_max[i])/(old_max[i]-old_min[i])
+        for point in tiling:
+            point[i] = a*point[i]+b
+
+
+
+# NOTE: From here new code from michal 2 starts, This needs some data files
+################making the gridrandom point field
+
+def make_gridrandom(resolution, edges):
+
+    #k - the length of the squares
+    #d - the number of dimensions
+    #z - do you want to add random points
+    number = np.prod(resolution)
+    k = 1
+    d = len(resolution)
+    z = False
+    
+    listgridrand = []
+    gr = pow(number, 1/d)
+    if math.ceil(gr)**d == number:
+        gr = math.ceil(gr)
+    else:
+        gr = int(gr)
+    g = np.linspace(-k/2, k/2, gr+1)
+    for c in product(g[:gr], repeat=d):
+        listgridrand.append([c[j]+random.uniform(0, k/(gr)) for j in range(d)])
+    if z:
+        for i in range(number - pow(gr, d)):
+            listgridrand.append([random.uniform(-k/2, k/2) for j in range(d)])
+
+    listgridrand = np.array(listgridrand)+0.5
+    old_min = np.zeros(d)
+    old_max = np.ones(d)
+    new_min, new_max = edges
+    return transform_grid(listgridrand, old_min, old_max, new_min, new_max)
+#ad first was random seed 3
+
+################accessing the file and making a hyperuniform tiling
+
+def get_hyper(d, directory):
+    #k - the sidelength of the square
+    #number - the number if points
+    #d - the number of dimensions
+
+
+    x = []
+    with open(directory) as f:
+        line = f.readline()
+        while line:
+            x.append([float(i) for i in line.split()])
+            x[-1] = x[-1][:d]
+            line = f.readline()
+
+    density = 0 #the density
+
+    for p in x:
+        if all([p[i]>=0.05 and p[i]<=0.95 for i in range(d)]):
+            density += 1
+
+
+    density = density/(0.9**d)
+
+    return x, density
+
+def make_true_hyper(resolution, edges):
+    number = np.prod(resolution)
+    k = 1
+    dim = len(resolution)
+
+    if dim==3:
+        directory0 = r"../../../data/Hyper_gridrandom2/stealthyForPaul2/stealthyForPaul2/3/5000/0.4/0/positions.dat"
+    if dim==4:
+       directory0 = r"../../../data/Hyper_gridrandom2/stealthyForPaul2/stealthyForPaul2/4/5000/0.4/0/positions.dat"
+    if dim==5:
+       directory0 = r"../../../data/Hyper_gridrandom2/stealthyForPaul2/stealthyForPaul2/5/5000/0.4/0/positions.dat"
+    hyperall = []
+    densityhyper = 0
+    if dim!=2:
+        hyperall, densityhyper = get_hyper(dim, directory0)
+
+    pattern = hyperall
+    density = densityhyper
+
+    if dim==2:
+
+        s=0.49
+        run = int(random.uniform(0, 60))
+
+        x = []
+        if s==0.38 and run>=20:
+         o = r"../../../data/Hyper_gridrandom2/stealthy-point-patterns/stealthy-"+str(s)+r"-1000/stealthy-"+str(s)+r"-lbfgs-1000-run-"+str(run)+".dat"
+        else:
+         o = r"../../../data/Hyper_gridrandom2/stealthy-point-patterns/stealthy-"+str(s)+r"-1000/stealthy-"+str(s)+r"-lbfgs-1000-run-"+str(run)+".txt"
+        with open(o) as f:
+            line = f.readline()
+            while line:
+                x.append([float(i) for i in line.split()])
+                line = f.readline()
+
+        d = 0 #the density
+        listhyper = []
+
+        for p in x:
+            if p[0] <= 20 and p[1] <= 20 and p[0] >= 5 and p[1] >= 5:
+                d += 1
+        d = d/225
+        a = np.sqrt(number/d)
+        f1 = k/a
+        f2 = (a+4)*k/(2*a)
+        for p in x:
+            if p[0] <= a+2 and p[1] <= a+2 and p[1] >= 2 and p[0] >= 2:
+                listhyper.append([p[0]*f1 - f2, p[1]*f1 - f2])
+
+
+    
+    else:
+        side = (number/density)**(1/dim)
+
+        
+        if 0.95-side/2 >= 0.5:
+            center = [random.uniform(0.95-side/2, 0.05+side/2) for i in range(dim)]
+        else:
+            center = [0.5 for i in range(d)]
+
+
+        listhyper = []
+        for p in pattern:
+            if all([p[i]-center[i] < side/2 and p[i]-center[i] > -side/2 for i in range(dim)]):
+                listhyper.append(list(p))
+
+
+        
+    print(dim)
+
+    if dim==2:
+        listhyper = np.array(listhyper) + 0.5
+        old_min = np.zeros(dim)
+        old_max = np.ones(dim)
+    else:
+        old_min = np.array([center[i]-side/2 for i in range(dim)])
+        old_max = np.array([center[i]+side/2 for i in range(dim)])
+
+    new_min, new_max = edges
+    
+
+    return transform_grid(listhyper, old_min, old_max, new_min, new_max)
+
+
 
 
 if __name__ == '__main__':
@@ -458,33 +625,62 @@ if __name__ == '__main__':
     print("reg_grid(resolution, edges)")
     print("\n " + 80 * "-" + "\n")
     print("""
-All functions take two arguments resolution and edges. Resolution is a list of integers 
+All functions take two arguments resolution and edges. Resolution is a list of integers
 that defines the resolution of the grid in each dimension. Edges is a list of two arrays
 that define the domain of the grid. The first array is the lower bound and the second array
 is the upper bound. The dimension of the grid is determined by the length of the resolution list.
 Resolution and edges must have the same dimension. \n""")
 
-    resolution = np.array([3, 3, 3])
-    edges = [np.array([0.03, 8, 0]), np.array([0.25, 22, 1])]
-    resolution = np.array([6, 6])
+    resolution = np.array([5,5])
     edges = [np.array([0.03, 8]), np.array([0.25, 22])]
-
+    import time
     print('Test of rsa_grid:')
+    start_time = time.time()
     rsa_tile_transformed = rsa_grid(resolution, edges)
-    plot_grid(rsa_tile_transformed, 'rsa', d = len(resolution))
+    end_time = time.time()
+    print('Time taken: ', end_time - start_time)
+    plot_grid(rsa_tile_transformed, 'rsa', d = 2)
 
     print('Test of hyper_tilling_grid:')
+    start_time = time.time()
     hyper_tilling_transformed = hyper_tilling_grid(resolution, edges)
-    plot_grid(hyper_tilling_transformed, 'hyper_tilling', d = len(resolution))
+    end_time = time.time()
+    print('Time taken: ', end_time - start_time)
+    plot_grid(hyper_tilling_transformed, 'hyper_tilling', d = 2)
 
     print('Test of lhs_grid:')
+    start_time = time.time()
     lhs_tile_transformed = lhs_grid(resolution, edges)
-    plot_grid(lhs_tile_transformed, 'lhs', d = len(resolution))
+    end_time = time.time()
+    print('Time taken: ', end_time - start_time)
+    plot_grid(lhs_tile_transformed , 'lhs', d = 2)
 
     print('Test of random_grid:')
+    start_time = time.time()
     rand_grid = random_grid(resolution, edges)
-    plot_grid(rand_grid, 'random', d = len(resolution))
+    end_time = time.time()
+    print('Time taken: ', end_time - start_time)
+    plot_grid(rand_grid , 'random', d = 2)
 
     print('Test of reg_grid:')
+    start_time = time.time()
     reg_grid = reg_grid(resolution, edges)
-    plot_grid(reg_grid, 'reg_grid', d = len(resolution))
+    end_time = time.time()
+    print('Time taken: ', end_time - start_time)
+    plot_grid(reg_grid, 'reg', d = 2)
+
+    print('Test of make_gridrandom:')
+    start_time = time.time()
+    gridrandom = make_gridrandom(resolution, edges)
+    end_time = time.time()
+    print('Time taken: ', end_time - start_time)
+    plot_grid(gridrandom , 'gridrandom', d = 2)
+
+    print('Test of true hyper:')
+    start_time = time.time()
+    true_hyper = make_true_hyper(resolution, edges)
+    end_time = time.time()
+    print('Time taken: ', end_time - start_time)
+    plot_grid(true_hyper , 'true_hyper', d = 2)
+    
+

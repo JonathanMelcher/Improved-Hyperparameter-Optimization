@@ -3,18 +3,15 @@
 
 
 This module tests different grid types for the Lightgbm algorithm on
-batches of the KDD12 dataset. The grid types tested are: regular grid, random
-uniform grid, latin hypercube sampling, random sampling and RSA. The module
-is run with MPI4py build against OpenMPI.
+batches of the KDD12 dataset. The grid types tested are: regular grid, random,
+gridrandom, quasiperiodic, random sequential addition, latin hypercube 
+sampling, and hyperuniform. The module is run with MPI4py build against OpenMPI.
 
 """
-
-
-import pickle
-import argparse
-
 import numpy as np
+
 import pandas as pd
+import pickle
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
@@ -23,23 +20,30 @@ from lightgbm import LGBMRegressor
 from lightgbm import early_stopping
 import Make_grids as mg
 
+# make it possible to pipe in arguments from command line
+import sys
+import os
 
-# Pipeline to change the resolution and dimension of the grid
+
+
+import argparse
+
+
 parser = argparse.ArgumentParser(description='Process some integers.')
 
 parser.add_argument('--res', type=int, default=3,
                     help='resolution of grid', )
 parser.add_argument('--dim', type=int, default=2,
                     help='dimension of grid', )
+parser.add_argument('--start_batch', type=int, default=0,
+                    help='start batch', )
 
 resolution = np.array([parser.parse_args().res]*parser.parse_args().dim)
 
-# predifened domain for the grid
-edges = np.array([[0.001,3,5,0.5], [1,20,50,0.99]])
+edges = np.array([[0.001,3,5,0.5,0.5,0.0001,0.0001,1], [1,20,50,0.99,1,10,10,10]])
 
 edges = edges[:,:parser.parse_args().dim]
 
-# MPI setup make sure it is build against OpenMPI
 from mpi4py import MPI
 import socket
 
@@ -47,26 +51,95 @@ if not MPI.Is_initialized():
     MPI.Init()
 
 
+
+
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
+#get complete number of processes
 size = comm.Get_size()
 
-if rank == 0:
+if rank == 8:
     print(MPI.Get_library_version())
+
+if rank != 8:
+    start_batch = parser.parse_args().start_batch
+    if start_batch == -1:
+        start_batch = 0
+    rank += (start_batch * 8)
 
 comm = MPI.COMM_WORLD
 print("Rank: ", comm.Get_rank(),'out of', size, "on Host: ", socket.gethostname())
 
-if rank == 0:
+import time
+start = time.time()
+
+
+if rank == 8:
     print('res', resolution)
     print('edges', edges)
+    print('batch', parser.parse_args().start_batch)
 
 
-#NOTE change this for your own path
-DATA_PATH = '../../../data/LGBM/Data/Batches/Batches_proto_4_csv/'
+edges = edges[:,:parser.parse_args().dim]
 
-def run_iteration(i, X_train, X_val, X_test, y_train, y_val, y_test,
-                    Estimators = 750, Objective = 'l2_root'):
+
+
+#NOTE change this for own path
+data_path = '../Data/Batches/'
+if not os.path.exists(data_path):
+    sys.exit('Load path does not exist')
+
+
+# define a function that takes a grid and returns the median minimum loss for each batch
+def median_min_loss(grid):
+    import pandas as pd
+
+    results_save = []
+    if rank == 8:
+        print('master setup for reciving')
+        # setup structure for saving results
+        results_par_save = []
+        # setup structure for receiving results from all workers
+
+        for i in range(0,size):
+            if i == 8:
+                continue
+            results_par_save.append(comm.recv(source=i, tag=11))
+
+        print('master recived all packages')
+        results_par_save = np.array(results_par_save, dtype=object)
+
+
+        return results_par_save
+
+    else:
+        #OBS: This is changed to fix a numbering error
+        q = rank
+
+        results_par_save_worker = []
+
+        data = pd.read_csv(data_path + 'kdd12_batch_{}.csv'.format(q))
+        print('worker {} loaded data from batch {}'.format(rank, q))
+        X_train = data.drop('2',axis=1)
+        y_train = data['2']
+        # split 70/30 train/test
+        X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.3, random_state=1999)
+
+        X_test, X_val, y_test, y_val = train_test_split(X_test, y_test, test_size=0.5, random_state=42)
+
+        for point in grid:
+            results = run_iteration(point, X_train, X_val, X_test, y_train, y_val, y_test)
+            results_par_save_worker.append(results)
+
+        #min_loss.append(np.min(np.array(results_par_save_worker)[:,2]))
+        # send results to master
+        comm.send(results_par_save_worker, dest=8, tag=11)
+
+        return None, None
+
+
+
+def run_iteration(i, X_train, X_val, X_test, y_train, y_val, y_test):
     """ 
     Function that runs a single iteration of the Lightgbm algorithm for a given
     point in a grid. It is hard coded what hyperparameters are used for
@@ -96,102 +169,84 @@ def run_iteration(i, X_train, X_val, X_test, y_train, y_val, y_test,
     y_test : array
         The test labels.
 
-    Estimators : int, optional
-        The number of estimators to be used in the Lightgbm algorithm. The default is 750.
-
-    Objective : str, optional
-        The objective function to be used in the Lightgbm algorithm. The default is 'l2_root'.
-        also known as root mean squared error.
-
     Returns
     -------
     batch_out : array
         The point in the grid and the mean squared error of the model.
     """
 
+    Estimators = 750
     grid_size_check = len(i)
+    Objective = 'l2_root'
     if grid_size_check == 2:
         LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, objective=Objective)
         LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
         y_pred = LGBM.predict(X_test)
         mse = np.sqrt(mean_squared_error(y_test, y_pred))
-        batch_out = [*i, mse]
-        return batch_out
+        batch_nr = [*i, mse]
+        return batch_nr
     elif grid_size_check == 3:
         LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, num_leaves=int(i[2]), objective=Objective)
         LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
         y_pred = LGBM.predict(X_test)
         mse = np.sqrt(mean_squared_error(y_test, y_pred))
-        batch_out = [*i, mse]
-        return batch_out
+        batch_nr = [*i, mse]
+        return batch_nr
     elif grid_size_check == 4:
+        if i[3] >= 1:
+            print('bagging fraction is larger than 1, number 4 in grid:', i)
+            i[3] = 0.99
         LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, num_leaves=int(i[2]), bagging_fraction=i[3], objective=Objective)
         LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
         y_pred = LGBM.predict(X_test)
         mse = np.sqrt(mean_squared_error(y_test, y_pred))
         i[1] = int(i[1])
         i[2] = int(i[2])
-        batch_out = [*i, mse]
-        return batch_out
+        batch_nr = [*i, mse]
+        return batch_nr
+    elif grid_size_check == 5:
+        LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, num_leaves=int(i[2]), bagging_fraction=i[3], feature_fraction=i[4], objective=Objective)
+        LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
+        y_pred = LGBM.predict(X_test)
+        mse = np.sqrt(mean_squared_error(y_test, y_pred))
+        i[1] = int(i[1])
+        i[2] = int(i[2])
+        batch_nr = [*i, mse]
+        return batch_nr
+    elif grid_size_check == 6:
+        LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, num_leaves=int(i[2]), bagging_fraction=i[3], feature_fraction=i[4], lambda_l1=i[5], objective=Objective)
+        LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
+        y_pred = LGBM.predict(X_test)
+        mse = np.sqrt(mean_squared_error(y_test, y_pred))
+        i[1] = int(i[1])
+        i[2] = int(i[2])
+        batch_nr = [*i, mse]
+        return batch_nr
+    elif grid_size_check == 7:
+        LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, num_leaves=int(i[2]), bagging_fraction=i[3], feature_fraction=i[4], lambda_l1=i[5], lambda_l2=i[6], objective=Objective)
+        LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
+        y_pred = LGBM.predict(X_test)
+        mse = np.sqrt(mean_squared_error(y_test, y_pred))
+        i[1] = int(i[1])
+        i[2] = int(i[2])
+        batch_nr = [*i, mse]
+        return batch_nr
+    elif grid_size_check == 8:
+        LGBM = LGBMRegressor(learning_rate=i[0], random_state=42, max_depth=int(i[1]), n_estimators = Estimators, num_leaves=int(i[2]), bagging_fraction=i[3], feature_fraction=i[4], lambda_l1=i[5], lambda_l2=i[6], min_data_in_leaf=int(i[7]), objective=Objective)
+        LGBM.fit(X_train, y_train, eval_set=[(X_val, y_val)],callbacks = [early_stopping(10, first_metric_only=True, verbose=False)])
+        y_pred = LGBM.predict(X_test)
+        mse = np.sqrt(mean_squared_error(y_test, y_pred))
+        i[1] = int(i[1])
+        i[2] = int(i[2])
+        i[7] = int(i[7])
+        batch_nr = [*i, mse]
+        return batch_nr
 
 
 
 
-# define a function that takes a grid and returns the median minimum loss for each batch
-def median_min_loss(grid):
-    """
-    Function that takes a grid and returns the median minimum loss for each 
-    batch and controls some of the MPI communication between the workers 
-    and the master node.
 
-    Parameters
-    ----------
-    grid : array
-        The grid to be tested. From the Make_grids module.
-    
-    Returns
-    -------
-    results_par_save : array
-        The median minimum loss for each batch.
-    """
-    if rank == 0:
-        print('master setup for reciving')
-        # setup structure for saving results
-        results_par_save = []
-        # setup structure for receiving results from all workers
-
-        for i in range(1,size):
-            results_par_save.append(comm.recv(source=i, tag=11))
-        
-        print('master recived all packages')
-        results_par_save = np.array(results_par_save, dtype=object)
-        
-
-        return results_par_save
-    
-    results_par_save_worker = []
-
-    data = pd.read_csv(DATA_PATH + 'kdd12_batch_{}.csv'.format(rank))
-    X_train = data.drop('2',axis=1)
-    y_train = data['2']
-    # split 70/30 train/test
-    X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.3, random_state=1999)
-
-    X_test, X_val, y_test, y_val = train_test_split(X_test, y_test, test_size=0.5, random_state=42)
-
-    for point in grid:
-        results = run_iteration(point, X_train, X_val, X_test, y_train, y_val, y_test)
-        results_par_save_worker.append(results)
-        
-    # send results to master
-    comm.send(results_par_save_worker, dest=0, tag=11)
-    
-    return None, None
-
-
-
-
-def total_analysis(resolution, edges, t, k):
+def totalt_analysis(resolution, edges, t, k, save_path = '../Data/GeneratedData/LGBM/'):
     """
     Function that runs analysis on all grid types and saves the results to a file.
     
@@ -203,7 +258,15 @@ def total_analysis(resolution, edges, t, k):
     edges : array
         The domain of the grid. Here given by the pipeline.
 
+    t : int
+        The number of batches to be run. Here given by the pipeline.
 
+    k : int
+        The number of workers to be used. Here given by the pipeline.
+
+    save_path : str, optional
+        The path to save the results. The default is 'data/GeneratedData/LGBM/'.
+        if the path does not exist the function will exit.
 
     Returns
     -------
@@ -213,65 +276,90 @@ def total_analysis(resolution, edges, t, k):
     None : None
         If the function runs successfully. Only returned by the worker nodes.
     """
-
+    #check if save path exists
+    if not os.path.exists(save_path):
+        sys.exit('Save path does not exist')
 
     d = len(resolution)
 
     # RSA
-    if rank == 0:
-        print(f'{rank} started RSA')
+    if rank == 8:
+       print(f'{rank} started RSA')
     values_rsa = median_min_loss(mg.rsa_grid(resolution, edges))
+    
+    if rank == 8:
+       pickle.dump(values_rsa, open(save_path + 'rsa_d_{}_res_{}_batch{}.p'.format(d, resolution[0], parser.parse_args().start_batch), 'wb'))
 
-    if rank == 0:
-        pickle.dump(values_rsa, open('../../../data/GeneratedData/LGBM/rsa_d_{}_res_{}.p'.format(d, resolution[0]), 'wb'))
-
-    #regular grid
-    if rank == 0:
+    # regular grid
+    if rank == 8:
         print(f'{rank} started regular grid')
     values_reg = median_min_loss(mg.reg_grid(resolution, edges))
-    if rank == 0:
-        pickle.dump(values_reg, open('../../../data/GeneratedData/LGBM/reg_d_{}_res_{}.p'.format(d, resolution[0]), 'wb'))
+    if rank == 8:
+        pickle.dump(values_reg, open(save_path + 'reg_d_{}_res_{}_batch{}.p'.format(d, resolution[0], parser.parse_args().start_batch), 'wb'))
 
 
     #random uniform grid
-    if rank == 0:
+    if rank == 8:
         print(f'{rank} started random uniform grid')
     values_rand = median_min_loss(mg.random_grid(resolution, edges))
 
-    if rank == 0:
-        pickle.dump(values_rand, open('../../../data/GeneratedData/LGBM/ran_d_{}_res_{}.p'.format(d, resolution[0]), 'wb'))
+    if rank == 8:
+        pickle.dump(values_rand, open(save_path + 'ran_d_{}_res_{}_batch{}.p'.format(d, resolution[0], parser.parse_args().start_batch), 'wb'))
 
 
     #hypertilling
-    if rank == 0:
+    if rank == 8:
         print(f'{rank} started hypertilling')
     values_hyper = median_min_loss(mg.hyper_tilling_grid(resolution, edges, t, k))
-    
-    if rank == 0:
-       pickle.dump(values_hyper, open('../../../data/GeneratedData/LGBM/hyp_d_{}_res_{}.p'.format(d, resolution[0]), 'wb'))
-    
+
+    if rank == 8:
+       pickle.dump(values_hyper, open(save_path + 'hyp_d_{}_res_{}_batch{}.p'.format(d, resolution[0], parser.parse_args().start_batch), 'wb'))
+
 
     #latin hypercube sampling
-    if rank == 0:
+    if rank == 8:
         print(f'{rank} started LHS')
     values_lhs = median_min_loss(mg.lhs_grid(resolution, edges))
 
-    if rank == 0:
-       pickle.dump(values_lhs, open('../../../data/GeneratedData/LGBM/lhs_d_{}_res_{}.p'.format(d, resolution[0]), 'wb'))
+    if rank == 8:
+       pickle.dump(values_lhs, open(save_path + 'lhs_d_{}_res_{}_batch{}.p'.format(d, resolution[0], parser.parse_args().start_batch), 'wb'))
 
-    if rank == 0:
+
+    # Grid random
+    if rank == 8:
+        print(f'{rank} started grid random')
+    values_grid_rand = median_min_loss(mg.make_gridrandom(resolution, edges))
+    if rank == 8:
+        pickle.dump(values_grid_rand, open(save_path + 'grid_rand_d_{}_res_{}_batch{}.p'.format(d, resolution[0], parser.parse_args().start_batch), 'wb'))
+
+
+    # true hyper tilling
+    if rank == 8:
+        print(f'{rank} started true hyper tilling')
+    values_true_hyper = median_min_loss(mg.make_true_hyper(resolution, edges))
+
+    if rank == 8:
+        pickle.dump(values_true_hyper, open(save_path + 'true_hyper_d_{}_res_{}_batch{}.p'.format(d, resolution[0], parser.parse_args().start_batch), 'wb'))
+
+
+
+    if rank == 8:
 
         return True
-    
+
     else:
         return None
 
 
 
 
-if rank == 0:
-    tot_out =total_analysis(resolution, edges, 6, 1)
-    if tot_out == True:
-        print('Successfull run')
+if rank == 8:
+    tot_out = totalt_analysis(resolution, edges, 6, 1)
+    end = time.time()
+
+    print('-'*80)
+    print('end', end)
+    print('time', end-start)
+
 else:
-    total_analysis(resolution, edges, 6, 1)
+    totalt_analysis(resolution, edges, 6, 1)
