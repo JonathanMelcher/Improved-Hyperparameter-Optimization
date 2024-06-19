@@ -1,0 +1,1 @@
+This directory contains a list of files. Each of them specifies the point coordinates (each row in a file corresponds to a different point) of a two-dimensional hyperuniform pattern with the 0.49 value of the stealth parameter. 
