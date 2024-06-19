@@ -1,7 +1,3 @@
-The "3" directory contains three-dimensional hyperuniform point patterns.
+The "0.3" directory contains files with four-dimensional point patterns with the "0.3" value of the stealth parameter.
 
-The "4" directory contains four-dimensional hyperuniform point patterns.
-
-The "5" directory contains five-dimensional hyperuniform point patterns.
-
-
+The "0.4" directory contains files with four-dimensional point patterns with the "0.4" value of the stealth parameter.
