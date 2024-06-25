@@ -4,8 +4,8 @@ The folder "stealthy-point-patterns2" contains files describing the stealthy poi
 
 The "Generic function" folder contains programs and data used for generating figures and tables corresponding to the generic function benchmark test.
 
-The folder "CNN_1" contains programs and data used for generating figures and tables corresponding to the CNN benchmark test.
+The folder "CNN" contains programs and data used for generating figures and tables corresponding to the CNN benchmark test.
 
-The folder "LightGBM_1" contains programs and data used for generating figures and tables corresponding to the LightGBM benchmark test.
+The folders "Lightgbm" and "Figure_LGBM" contain programs and data used for generating figures and tables corresponding to the LightGBM benchmark test.
 
 The program "Figure_1" generates Figure 1 from the manuscript.
